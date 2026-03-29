@@ -1,0 +1,13 @@
+# Datos crudos y procesados — archivos grandes, no versionar
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+
+# IDEs
+.idea/
+.vscode/
+*.DS_Store
