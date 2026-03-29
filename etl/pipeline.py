@@ -149,6 +149,16 @@ print(f"Registros con hora inválida (hora=None): {n_hora_invalida:,}")
 
 df['bloque_15min'] = (df['minuto'] // 15 * 15).where(df['minuto'].notna())
 
+# Columna de tiempo combinada para fact_delitos: HH:MM:SS AM/PM (granularidad 15 min)
+# Usa hora + bloque_15min (0/15/30/45) con segundos fijos en 00
+_h  = df['hora'].fillna(0).astype(int)
+_m  = df['bloque_15min'].fillna(0).astype(int)
+_sfx = _h.map(lambda h: 'AM' if h < 12 else 'PM')
+_h12 = (_h % 12).replace(0, 12)
+df['hora_time'] = (_h12.astype(str).str.zfill(2) + ':' +
+                   _m.astype(str).str.zfill(2) + ':00 ' + _sfx)
+df.loc[df['hora'].isna(), 'hora_time'] = None
+
 # 2.4 Campos temporales derivados
 print("\n[2.4] Calculando campos temporales derivados ...")
 df['anio']       = df['DATE_OCC'].dt.year
@@ -196,7 +206,7 @@ df['Vict_Age'] = pd.to_numeric(df['Vict_Age'], errors='coerce')
 n_edad_invalida = ((df['Vict_Age'] < 0) | (df['Vict_Age'] > 120)).sum()
 df.loc[df['Vict_Age'] < 0,   'Vict_Age'] = np.nan
 df.loc[df['Vict_Age'] > 120, 'Vict_Age'] = np.nan
-print(f"Edades inválidas (<0 o >120): {n_edad_invalida:,} → NaN")
+print(f"Edades invalidas (<0 o >120): {n_edad_invalida:,} -> NaN")
 
 def rango_etario(age):
     if pd.isna(age): return 'Desconocido'
@@ -231,9 +241,9 @@ n_sin_arma = df['Weapon_Desc'].isna().sum()
 df['Weapon_Desc'] = df['Weapon_Desc'].fillna('No Weapon / Unknown')
 df['Premis_Desc'] = df['Premis_Desc'].fillna('Unknown')
 df['Status_Desc'] = df['Status_Desc'].fillna('Unknown')
-print(f"Registros sin arma (Weapon_Desc vacío → 'No Weapon / Unknown'): {n_sin_arma:,}")
+print(f"Registros sin arma (Weapon_Desc vacio -> 'No Weapon / Unknown'): {n_sin_arma:,}")
 
-print(f"\n  RESUMEN TRANSFORMACIÓN: {n_inicial:,} → {len(df):,} registros finales")
+print(f"\n  RESUMEN TRANSFORMACION: {n_inicial:,} -> {len(df):,} registros finales")
 
 # ─────────────────────────────────────────────
 # PASO 3: CARGA — DATA MARTS
@@ -253,7 +263,7 @@ dim_tiempo = df[[
 ]].drop_duplicates().reset_index(drop=True)
 out = os.path.join(PROC_DIR, 'dim_tiempo.csv')
 dim_tiempo.to_csv(out, index=False)
-print(f"{len(dim_tiempo):,} filas → {out}")
+print(f"{len(dim_tiempo):,} filas ->{out}")
 
 # 3.2 Dimensión Área
 print("\n[3.2] Generando dim_area ...")
@@ -261,7 +271,7 @@ dim_area = df[['AREA', 'AREA_NAME', 'Rpt_Dist_No']].drop_duplicates().reset_inde
 dim_area.columns = ['area_id', 'area_nombre', 'rpt_dist_no']
 out = os.path.join(PROC_DIR, 'dim_area.csv')
 dim_area.to_csv(out, index=False)
-print(f"{len(dim_area):,} filas → {out}")
+print(f"{len(dim_area):,} filas ->{out}")
 
 # 3.3 Dimensión Delito
 print("\n[3.3] Generando dim_delito ...")
@@ -270,27 +280,27 @@ dim_delito = df[['Crm_Cd', 'Crm_Cd_Desc', col_gravedad]].drop_duplicates().reset
 dim_delito.columns = ['crm_cd', 'crm_desc', 'gravedad']
 out = os.path.join(PROC_DIR, 'dim_delito.csv')
 dim_delito.to_csv(out, index=False)
-print(f"{len(dim_delito):,} filas → {out}")
+print(f"{len(dim_delito):,} filas ->{out}")
 
 # 3.4 Dimensión Víctima
 print("\n[3.4] Generando dim_victima ...")
 dim_victima = df[['Vict_Age', 'rango_etario', 'Vict_Sex', 'Vict_Descent', 'Vict_Descent_Desc']].drop_duplicates().reset_index(drop=True)
 out = os.path.join(PROC_DIR, 'dim_victima.csv')
 dim_victima.to_csv(out, index=False)
-print(f"{len(dim_victima):,} filas → {out}")
+print(f"{len(dim_victima):,} filas ->{out}")
 
 # 3.5 Dimensión Lugar
 print("\n[3.5] Generando dim_lugar ...")
 dim_lugar = df[['Premis_Cd', 'Premis_Desc', 'LOCATION', 'Cross_Street', 'LAT', 'LON']].drop_duplicates().reset_index(drop=True)
 out = os.path.join(PROC_DIR, 'dim_lugar.csv')
 dim_lugar.to_csv(out, index=False)
-print(f"  → {len(dim_lugar):,} filas → {out}")
+print(f"  {len(dim_lugar):,} filas -> {out}")
 
 # 3.6 Fact Table
 print("\n[3.6] Generando fact_delitos ...")
 fact_cols = [
     'DR_NO', 'DATE_OCC', 'anio', 'mes', 'semana_anio', 'dia_mes',
-    'hora', 'bloque_15min', 'rango_horario', 'es_finde', 'es_feriado',
+    'hora_time', 'rango_horario', 'es_finde', 'es_feriado',
     'AREA', 'AREA_NAME', 'Rpt_Dist_No',
     'Crm_Cd', 'Crm_Cd_Desc', col_gravedad, 'Weapon_Desc',
     'Vict_Age', 'rango_etario', 'Vict_Sex', 'Vict_Descent_Desc',
@@ -298,15 +308,16 @@ fact_cols = [
     'Status_Desc', 'Date_Rptd'
 ]
 fact_delitos = df[fact_cols].copy()
+fact_delitos = fact_delitos.rename(columns={'hora_time': 'hora'})
 fact_delitos['dias_hasta_reporte'] = (df['Date_Rptd'] - df['DATE_OCC']).dt.days
 out = os.path.join(PROC_DIR, 'fact_delitos.csv')
 fact_delitos.to_csv(out, index=False)
-print(f"{len(fact_delitos):,} filas → {out}")
+print(f"{len(fact_delitos):,} filas ->{out}")
 
 # 3.7 Data Mart Resumen Temporal
 print("\n[3.7] Generando mart_resumen_temporal ...")
 mart_temporal = fact_delitos.groupby(
-    ['anio', 'mes', 'semana_anio', 'dia_mes', 'hora', 'bloque_15min',
+    ['anio', 'mes', 'semana_anio', 'dia_mes', 'hora',
      'AREA', 'Crm_Cd', 'es_finde', 'es_feriado'],
     dropna=False
 ).agg(
@@ -314,7 +325,7 @@ mart_temporal = fact_delitos.groupby(
 ).reset_index()
 out = os.path.join(PROC_DIR, 'mart_resumen_temporal.csv')
 mart_temporal.to_csv(out, index=False)
-print(f"{len(mart_temporal):,} filas → {out}")
+print(f"{len(mart_temporal):,} filas ->{out}")
 
 # ─────────────────────────────────────────────
 # VALIDACIONES DE CALIDAD
@@ -383,7 +394,7 @@ print("RESUMEN FINAL")
 print("=" * 60)
 print(f"  Registros iniciales:    {n_inicial:,}")
 print(f"  Registros procesados:   {len(df):,}")
-print(f"  Rango de fechas:        {df['DATE_OCC'].min().date()} → {df['DATE_OCC'].max().date()}")
+print(f"  Rango de fechas:        {df['DATE_OCC'].min().date()} -> {df['DATE_OCC'].max().date()}")
 print(f"  Años cubiertos:         {sorted(df['anio'].unique())}")
 print(f"\n  Archivos generados en data/processed/:")
 for fname in sorted(os.listdir(PROC_DIR)):
