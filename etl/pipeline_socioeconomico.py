@@ -80,9 +80,7 @@ ANOS_COMPLETOS = [2020, 2021, 2022, 2023]
 ANO_SOSPECHOSO = 2024   # ~45% menos registros — posible lag de carga
 ANO_PARCIAL    = 2025   # solo enero-marzo
 
-# ─────────────────────────────────────────────────────────────────────────────
 # PASO 1: EXTRACCION
-# ─────────────────────────────────────────────────────────────────────────────
 
 print("=" * 65)
 print("PASO 1: EXTRACCION")
@@ -100,18 +98,15 @@ df_pop = pd.read_csv(pop_path, encoding='utf-8-sig')
 df_pop.columns = df_pop.columns.str.strip()
 print(f"  Tracts cargados: {len(df_pop):,}")
 
-# ─────────────────────────────────────────────────────────────────────────────
 # PASO 2: TRANSFORMACION
-# ─────────────────────────────────────────────────────────────────────────────
 
 print("\n" + "=" * 65)
 print("PASO 2: TRANSFORMACION")
 print("=" * 65)
 
-# ── 2.1 Limpiar y preparar datos de crimen ──────────────────────────────────
+# Limpiar y preparar datos de crimen
 
 print("\n[2.1] Preparando datos de crimen ...")
-
 for fmt in ['%m/%d/%Y %I:%M:%S %p', '%m/%d/%Y']:
     converted = pd.to_datetime(df_crime['DATE_OCC'], format=fmt, errors='coerce')
     if converted.notna().sum() > len(df_crime) * 0.9:
@@ -126,14 +121,13 @@ df_crime['anio'] = df_crime['DATE_OCC'].dt.year
 df_crime['AREA_NAME'] = df_crime['AREA_NAME'].str.strip()
 df_crime['hd_name'] = df_crime['AREA_NAME'].map(LAPD_HD_MAP)
 
-# Marcar calidad del ano
+# Marcar calidad del año
 def clasificar_ano(a):
     if a in ANOS_COMPLETOS:
         return 'completo'
     if a == ANO_SOSPECHOSO:
         return 'incompleto'
     return 'parcial'
-
 df_crime['estado_anio'] = df_crime['anio'].map(clasificar_ano)
 
 # Distribucion por ano para diagnostico
@@ -150,15 +144,14 @@ print(f"  Registros sin mapeo HD (no deberia ser > 0): {n_sin_hd:,}")
 if n_sin_hd > 0:
     print(f"  Areas sin mapear: {df_crime[df_crime['hd_name'].isna()]['AREA_NAME'].unique()}")
 
-# ── 2.2 Limpiar y agregar datos de poblacion ─────────────────────────────────
+# Limpiar y agregar datos de poblacion
 
 print("\n[2.2] Preparando datos de poblacion y pobreza ...")
 
 df_la = df_pop[df_pop['CITY'] == 'Los Angeles'].copy()
 df_la['HD_name'] = df_la['HD_name'].str.strip()
 
-# FIX: excluir HDs sin cobertura LAPD (Glendale, Inglewood, San Fernando,
-# South, Torrance) — tienen tracts en LA pero su policia no es el LAPD.
+# FIX: excluir HDs sin cobertura LAPD (Glendale, Inglewood, San Fernando, South, Torrance) — tienen tracts en LA pero su policia no es el LAPD.
 hds_en_datos   = set(df_la['HD_name'].unique())
 hds_sin_lapd   = hds_en_datos - HD_CON_LAPD
 hds_con_lapd   = hds_en_datos & HD_CON_LAPD
@@ -190,7 +183,7 @@ df_la_lapd['POP24_ADULTOS']         = df_la_lapd[['POP24_AGE_30_34','POP24_AGE_3
 df_la_lapd['POP24_ADULTOS_MAYORES'] = df_la_lapd[['POP24_AGE_65_74','POP24_AGE_75_84',
                                                     'POP24_AGE_85_100']].sum(axis=1)
 
-# ── 2.3 Agregar poblacion por HD ─────────────────────────────────────────────
+# Agregar poblacion por HD
 
 print("\n[2.3] Agregando datos socioeconomicos por HD ...")
 
@@ -235,13 +228,11 @@ for _, row in df_hd[['HD_name','POP24_TOTAL','tasa_pobreza_pct','n_areas_lapd']]
           f"| Pobreza: {row['tasa_pobreza_pct']:>5.1f}% "
           f"| Areas LAPD: {int(row['n_areas_lapd'])}")
 
-# ── 2.4 Agregar crimenes por HD y año ────────────────────────────────────────
-
+# Agregar crimenes por HD y año
 print("\n[2.4] Agregando crimenes por HD ...")
-
 df_mapeado = df_crime[df_crime['hd_name'].notna()].copy()
 
-# FIX: separar anos completos vs. incompletos para calculos de tasa
+# separar años completos vs. incompletos para calculos de tasa
 df_completos  = df_mapeado[df_mapeado['anio'].isin(ANOS_COMPLETOS)]
 n_anos_completos = len(ANOS_COMPLETOS)
 
@@ -261,7 +252,7 @@ crimen_total_hd = (df_mapeado
     .reset_index()
     .rename(columns={'hd_name': 'HD_name'}))
 
-# Crimenes por HD y ano (todos los anos, con flag de estado)
+# Crimenes por HD y año (todos los anos, con flag de estado)
 crimen_anual_hd = (df_mapeado
     .groupby(['hd_name', 'anio', 'estado_anio'])
     .agg(total_delitos=('DR_NO', 'count'),
@@ -270,7 +261,7 @@ crimen_anual_hd = (df_mapeado
     .reset_index()
     .rename(columns={'hd_name': 'HD_name'}))
 
-# ── 2.5 Perfil de victima por HD ─────────────────────────────────────────────
+# Perfil de victima por HD
 
 print("\n[2.5] Calculando perfil de victima por HD ...")
 
@@ -290,15 +281,14 @@ df_mapeado['Vict_Descent_Desc'] = (df_mapeado['Vict_Descent']
                                     .map(DESCENT_MAP)
                                     .fillna('Unknown'))
 
-# Solo anos completos para el perfil de victima (evita sesgo de anos parciales)
+# Solo anos completos para el perfil de victima (evita sesgo de años parciales)
 perfil_victima_hd = (df_mapeado[df_mapeado['anio'].isin(ANOS_COMPLETOS)]
     .groupby(['hd_name', 'Vict_Sex', 'Vict_Descent_Desc'])
     .agg(total_delitos=('DR_NO', 'count'))
     .reset_index()
     .rename(columns={'hd_name': 'HD_name'}))
 
-# ── 2.6 Construir marts consolidados ─────────────────────────────────────────
-
+# Construir marts consolidados
 print("\n[2.6] Construyendo marts consolidados ...")
 
 socio_base = df_hd[['HD_name', 'POP24_TOTAL', 'tasa_pobreza_pct', 'densidad_hab_sqmil',
@@ -306,13 +296,13 @@ socio_base = df_hd[['HD_name', 'POP24_TOTAL', 'tasa_pobreza_pct', 'densidad_hab_
                      'pct_hispanic', 'pct_black', 'pct_white', 'pct_asian',
                      'pct_jovenes', 'pct_adultos_mayores']]
 
-# --- mart_tasa_crimen: KPI central, tasas anualizadas sobre anos completos ---
+# mart_tasa_crimen: KPI central, tasas anualizadas sobre anos completos
 mart_tasa = crimen_completos_hd.merge(socio_base, on='HD_name', how='inner')
 
 mart_tasa['anos_base_calculo'] = n_anos_completos
 mart_tasa['anos_base_str']     = f"{ANOS_COMPLETOS[0]}-{ANOS_COMPLETOS[-1]}"
 
-# FIX: tasa anualizada = promedio anual de delitos / poblacion * 100k
+# tasa anualizada = promedio anual de delitos / poblacion * 100k
 mart_tasa['delitos_por_anio']         = (mart_tasa['delitos_anos_completos'] / n_anos_completos).round(0).astype(int)
 mart_tasa['tasa_crimen_anual_100k']   = (mart_tasa['delitos_por_anio'] / mart_tasa['POP24_TOTAL'] * 100_000).round(1)
 mart_tasa['delitos_graves_por_anio']  = (mart_tasa['delitos_part1_completos'] / n_anos_completos).round(0).astype(int)
@@ -333,15 +323,15 @@ mart_tasa = mart_tasa[[
     'pct_jovenes', 'pct_adultos_mayores',
 ]]
 
-# --- mart_crimen_anual_hd: evolucion anual con contexto socioeconomico ---
+# mart_crimen_anual_hd: evolucion anual con contexto socioeconomico
 mart_anual = crimen_anual_hd.merge(socio_base, on='HD_name', how='left')
 
-# FIX: tasa anual real = delitos de ese año / poblacion
+# tasa anual real = delitos de ese año / poblacion
 mart_anual['tasa_crimen_anual_100k'] = (
     mart_anual['total_delitos'] / mart_anual['POP24_TOTAL'] * 100_000
 ).round(1)
 
-# Reordenar columnas con estado_anio al frente para que sea obvio en Power BI
+# Reordenar columnas con estado_anio al frente
 mart_anual = mart_anual[[
     'HD_name', 'anio', 'estado_anio', 'areas_lapd',
     'total_delitos', 'delitos_part1', 'delitos_part2',
@@ -351,9 +341,7 @@ mart_anual = mart_anual[[
     'pct_jovenes', 'pct_adultos_mayores',
 ]].sort_values(['HD_name', 'anio']).reset_index(drop=True)
 
-# ─────────────────────────────────────────────────────────────────────────────
 # PASO 3: CARGA
-# ─────────────────────────────────────────────────────────────────────────────
 
 print("\n" + "=" * 65)
 print("PASO 3: CARGA")
@@ -391,9 +379,7 @@ if os.path.exists(obsoleto):
     os.remove(obsoleto)
     print(f"  mart_crimen_hd.csv eliminado (era redundante con mart_tasa_crimen.csv)")
 
-# ─────────────────────────────────────────────────────────────────────────────
 # VALIDACION FINAL
-# ─────────────────────────────────────────────────────────────────────────────
 
 print("\n" + "=" * 65)
 print("VALIDACION FINAL")
@@ -449,6 +435,5 @@ print(f"  Menor: {mart_tasa.iloc[-1]['HD_name']}  — "
       f"{mart_tasa.iloc[-1]['tasa_crimen_anual_100k']:.0f}/100k/ano  "
       f"(pobreza: {mart_tasa.iloc[-1]['tasa_pobreza_pct']:.1f}%)")
 
-print("\n" + "=" * 65)
 print("ETL SOCIOECONOMICO COMPLETADO SIN ERRORES")
-print("=" * 65)
+
